@@ -1,9 +1,11 @@
-import streamlit as st
-from google import genai
 
-# ----------------------------------
+import streamlit as st
+from groq import Groq
+import sympy as sp
+
+# ==========================================
 # PAGE CONFIGURATION
-# ----------------------------------
+# ==========================================
 
 st.set_page_config(
     page_title="Maths AI Solver",
@@ -11,21 +13,65 @@ st.set_page_config(
     layout="centered"
 )
 
-# ----------------------------------
-# GEMINI CONFIGURATION
-# ----------------------------------
+# ==========================================
+# GROQ CONFIGURATION
+# ==========================================
 
-MODEL = "gemini-3.8-flash"
+MODEL = "openai/gpt-oss-120b"
+
 
 @st.cache_resource
 def get_client():
-    return genai.Client(
-        api_key=st.secrets["GEMINI_API_KEY"]
+    return Groq(
+        api_key=st.secrets["GROQ_API_KEY"]
     )
 
-# ----------------------------------
+
+def ask_ai(prompt):
+
+    client = get_client()
+
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[
+            {
+                "role": "system",
+                "content": """
+                You are an expert mathematics tutor.
+
+                Your job is to solve mathematical problems
+                and explain them clearly.
+
+                Instructions:
+                - Explain every step.
+                - Show relevant calculations.
+                - Use LaTeX for equations.
+                - Check your answers.
+                - Adapt explanations to the student's level.
+                - Be accurate and educational.
+                """
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        temperature=0.2,
+        max_completion_tokens=2500,
+        reasoning_effort="medium"
+    )
+
+    answer = response.choices[0].message.content
+
+    if not answer:
+        raise ValueError("The AI returned an empty response.")
+
+    return answer
+
+
+# ==========================================
 # SIDEBAR SETTINGS
-# ----------------------------------
+# ==========================================
 
 st.sidebar.header("Assistant settings")
 st.sidebar.write("Experimental features")
@@ -40,52 +86,83 @@ theme = st.sidebar.selectbox(
     ["Light", "Dark"]
 )
 
-# Apply selected theme
+
+# ==========================================
+# THEME
+# ==========================================
+
 if theme == "Dark":
+
     st.markdown("""
         <style>
+
         [data-testid="stAppViewContainer"] {
             background-color: #171923;
             color: white;
         }
+
         [data-testid="stSidebar"] {
             background-color: #202333;
         }
+
         [data-testid="stHeader"] {
             background-color: transparent;
         }
+
         </style>
     """, unsafe_allow_html=True)
 
-# ----------------------------------
-# HELPER FUNCTION
-# ----------------------------------
 
-def ask_gemini(prompt):
+# ==========================================
+# MATHEMATICAL CALCULATOR
+# ==========================================
 
-    client = get_client()
+def calculate_math(expression):
 
-    response = client.models.generate_content(
-        model=MODEL,
-        contents=prompt
-    )
+    try:
 
-    if not response.text:
-        raise ValueError("Gemini returned an empty response.")
+        x = sp.symbols("x")
 
-    return response.text
+        expression = expression.strip()
+
+        # Handle equations
+        if "=" in expression:
+
+            left, right = expression.split("=", 1)
+
+            equation = sp.Eq(
+                sp.sympify(left),
+                sp.sympify(right)
+            )
+
+            result = sp.solve(equation, x)
+
+            return result
+
+        # Handle ordinary expressions
+        else:
+
+            result = sp.sympify(expression)
+
+            return sp.simplify(result)
+
+    except Exception:
+
+        return None
 
 
-# ----------------------------------
+# ==========================================
 # TABS
-# ----------------------------------
+# ==========================================
 
-tab_1, tab_2 = st.tabs(["Assistant", "Practice"])
+tab_1, tab_2 = st.tabs(
+    ["Assistant", "Practice"]
+)
 
 
-# ==================================
-# TAB 1: MATHS ASSISTANT
-# ==================================
+# ==========================================
+# TAB 1: ASSISTANT
+# ==========================================
 
 with tab_1:
 
@@ -109,7 +186,9 @@ with tab_1:
 
         if not prompt.strip():
 
-            st.warning("Please enter a maths problem first.")
+            st.warning(
+                "Please enter a mathematical problem."
+            )
 
         else:
 
@@ -117,57 +196,73 @@ with tab_1:
 
                 try:
 
+                    # Ask AI for an explanation
                     question = f"""
-                    You are an expert mathematics tutor.
+                    Student level: {level}
 
-                    The student's level is: {level}.
+                    Solve this mathematical problem.
 
-                    Solve the following mathematical problem.
+                    Explain the solution step by step.
+                    Show all calculations.
+                    Use LaTeX formatting.
+                    Check your final answer.
 
-                    Instructions:
-                    1. Explain the solution step by step.
-                    2. Show all relevant calculations.
-                    3. Explain the mathematical concepts.
-                    4. Clearly highlight the final answer.
-                    5. Check your calculations.
-                    6. Use LaTeX formatting for equations.
-                    7. Adjust your explanation to the student's level.
-
-                    Mathematical problem:
-                    {prompt}
+                    Problem: {prompt}
                     """
 
-                    answer = ask_gemini(question)
+                    answer = ask_ai(question)
 
                     st.success("Solution generated!")
 
-                    st.markdown("### Solution")
+                    st.markdown("### AI Explanation")
+
                     st.markdown(answer)
+
+                    # Try to calculate using SymPy
+                    result = calculate_math(prompt)
+
+                    if result is not None:
+
+                        st.markdown("### Python verification")
+
+                        st.latex(
+                            sp.latex(result)
+                        )
+
+                        st.caption(
+                            "Calculated independently using SymPy."
+                        )
 
                 except Exception as e:
 
-                    st.error(f"Something went wrong: {e}")
+                    st.error(
+                        f"An error occurred: {e}"
+                    )
 
 
-# ==================================
+# ==========================================
 # TAB 2: PRACTICE
-# ==================================
+# ==========================================
 
 with tab_2:
 
     st.title("Maths Practice ✏️")
 
-    st.subheader("Test your mathematical knowledge!")
+    st.subheader(
+        "Test your mathematical knowledge!"
+    )
 
     st.write(
         f"Current difficulty: **{level}**"
     )
 
-    # Generate a practice question
+    # Generate question
+    if st.button(
+        "Generate question",
+        type="primary"
+    ):
 
-    if st.button("Generate question", type="primary"):
-
-        with st.spinner("Generating a maths question..."):
+        with st.spinner("Generating question..."):
 
             try:
 
@@ -177,28 +272,34 @@ with tab_2:
                 Difficulty: {level}
 
                 Requirements:
-                - Make the question suitable for this difficulty.
-                - Only generate one question.
+                - Generate one clear question.
+                - Make it suitable for the selected level.
                 - Do not reveal the answer.
-                - Keep the question clear and understandable.
+                - Do not include the solution.
                 """
 
-                generated = ask_gemini(question)
+                generated = ask_ai(question)
 
                 st.session_state.practice_question = generated
+
                 st.session_state.practice_feedback = None
+
+                st.session_state.practice_answer = ""
 
             except Exception as e:
 
-                st.error(f"Something went wrong: {e}")
+                st.error(
+                    f"An error occurred: {e}"
+                )
 
-    # Display generated question
-
+    # Display question
     if "practice_question" in st.session_state:
 
         st.markdown("### Your question")
 
-        st.markdown(st.session_state.practice_question)
+        st.markdown(
+            st.session_state.practice_question
+        )
 
         user_answer = st.text_input(
             "Your answer",
@@ -209,7 +310,9 @@ with tab_2:
 
             if not user_answer.strip():
 
-                st.warning("Please enter your answer.")
+                st.warning(
+                    "Please enter your answer."
+                )
 
             else:
 
@@ -222,37 +325,49 @@ with tab_2:
 
                         Difficulty: {level}
 
-                        Mathematics question:
+                        Question:
                         {st.session_state.practice_question}
 
                         Student's answer:
                         {user_answer}
 
-                        Check whether the answer is mathematically correct.
+                        Assess the answer.
 
                         Explain:
-                        1. Whether the answer is correct.
+                        1. Whether it is correct.
                         2. Why it is correct or incorrect.
-                        3. The correct solution, step by step.
-                        4. The correct final answer.
+                        3. The correct solution step by step.
+                        4. The final answer.
 
                         Be encouraging and educational.
                         """
 
-                        feedback = ask_gemini(check_prompt)
+                        feedback = ask_ai(check_prompt)
 
                         st.session_state.practice_feedback = feedback
 
                     except Exception as e:
 
-                        st.error(f"Something went wrong: {e}")
+                        st.error(
+                            f"An error occurred: {e}"
+                        )
 
-        # Display feedback
-
-        if st.session_state.practice_feedback:
+        # Show feedback
+        if st.session_state.get("practice_feedback"):
 
             st.markdown("### Feedback")
 
             st.markdown(
                 st.session_state.practice_feedback
             )
+
+
+# ==========================================
+# FOOTER
+# ==========================================
+
+st.divider()
+
+st.caption(
+    "Maths AI Solver | Powered by Groq, GPT-OSS and Python"
+)
