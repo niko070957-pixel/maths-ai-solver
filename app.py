@@ -8,7 +8,7 @@ import sympy as sp
 # ==========================================
 
 st.set_page_config(
-    page_title="Maths AI Solver",
+    page_title="ReSolve",
     page_icon="📐",
     layout="centered"
 )
@@ -166,7 +166,7 @@ tab_1, tab_2 = st.tabs(
 
 with tab_1:
 
-    st.title("Maths AI Solver 📐")
+    st.title("ReSolve 📐")
 
     st.subheader(
         "Solve equations and perform algebraic operations with ease!"
